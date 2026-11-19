@@ -173,6 +173,10 @@ type informationForClaim struct {
 	// May be set by PreFilter if this allocation was made by a previous Pod's
 	// Reserve but not yet published in PreBind.
 	allocation *resourceapi.AllocationResult
+
+	// Set once the claim is stored and this pod has released the pending allocation,
+	// so that Unreserve does not release it a second time.
+	pendingAllocationReleased bool
 }
 
 // nodeAllocation holds the allocation results and extended resource claim per node.
@@ -1664,7 +1668,7 @@ func (pl *DynamicResources) Unreserve(ctx context.Context, cs fwk.CycleState, po
 	logger := klog.FromContext(ctx)
 
 	// we process user claims here first, extendedResourceClaim if any is handled below.
-	for _, claim := range state.claims.allUserClaims() {
+	for index, claim := range state.claims.allUserClaims() {
 		// If allocation was in-flight, then it might not be anymore if no pods
 		// still need the pending allocation. The allocation is not removed
 		// until the last Pod sharing it is Bound or Unreserved.
@@ -1675,7 +1679,10 @@ func (pl *DynamicResources) Unreserve(ctx context.Context, cs fwk.CycleState, po
 		// informer events whose ResourceVersion is not newer than the assumed
 		// claim, so restoring could drop an allocation stored by PreBind of
 		// this or another Pod sharing the claim and make its devices look free.
-		if deleted := pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claim.UID, false); deleted {
+		//
+		// If PreBind already released the pending allocation, it must not be
+		// released again on behalf of this pod.
+		if !state.informationsForClaim[index].pendingAllocationReleased && pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claim.UID, false) {
 			logger.V(5).Info("Released resource in allocation result", "claim", klog.KObj(claim), "uid", claim.UID, "resourceVersion", claim.ResourceVersion, "allocation", klog.Format(claim.Status.Allocation))
 
 			// If we are currently asynchronously Binding Pods in a PodGroup,
@@ -1724,7 +1731,7 @@ func (pl *DynamicResources) Unreserve(ctx context.Context, cs fwk.CycleState, po
 // If anything fails, we return an error and
 // the pod will have to go into the backoff queue. The scheduler will call
 // Unreserve as part of the error handling.
-func (pl *DynamicResources) PreBind(ctx context.Context, cs fwk.CycleState, pod *v1.Pod, nodeName string) (retStatus *fwk.Status) {
+func (pl *DynamicResources) PreBind(ctx context.Context, cs fwk.CycleState, pod *v1.Pod, nodeName string) *fwk.Status {
 	state, err := getStateData(cs)
 	if err != nil {
 		return statusError(klog.FromContext(ctx), err)
@@ -1771,15 +1778,10 @@ func (pl *DynamicResources) PreBind(ctx context.Context, cs fwk.CycleState, pod 
 
 	for index, claim := range state.claims.all() {
 		if !resourceclaim.IsReservedForPod(pod, claim, pl.fts.EnableDRAWorkloadResourceClaims) {
-			claim, successCleanup, err := pl.bindClaim(ctx, state, index, pod, nodeName)
+			claim, err := pl.bindClaim(ctx, state, index, pod, nodeName)
 			if err != nil {
 				return statusError(logger, err)
 			}
-			defer func() {
-				if retStatus.IsSuccess() && successCleanup != nil {
-					successCleanup()
-				}
-			}()
 			// Updated here such that Unreserve can work with patched claim.
 			state.claims.set(index, claim)
 		}
@@ -1953,9 +1955,7 @@ func (pl *DynamicResources) createExtendedResourceClaim(ctx context.Context, pod
 // bindClaim gets called by PreBind for claim which is not reserved for the pod yet.
 // It might not even be allocated. bindClaim then ensures that the allocation
 // and reservation are recorded. This finishes the work started in Reserve.
-// Returns the updated claim, a function which (if not nil) should run when the
-// pod has been successfully bound, and an error if one occurred.
-func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, index int, pod *v1.Pod, nodeName string) (*resourceapi.ResourceClaim, func(), error) {
+func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, index int, pod *v1.Pod, nodeName string) (_ *resourceapi.ResourceClaim, retErr error) {
 	logger := klog.FromContext(ctx)
 	claim := state.claims.get(index)
 	binding := state.claims.getBinding(index, pod)
@@ -1965,7 +1965,7 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, ind
 	if claim == state.claims.extendedResourceClaim() {
 		// extended resource requests satisfied by device plugin
 		if allocation == nil && claim.Spec.Devices.Requests == nil {
-			return claim, nil, nil
+			return claim, nil
 		}
 		isExtendedResourceClaim = true
 		// Reserve keyed the pending allocation by the UID from PreFilter, which PreBind may have replaced.
@@ -1998,12 +1998,18 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, ind
 				}
 			}
 		}
-	}()
 
-	// This logic is deferred to the end of [DynamicResources.PreBind] and runs
-	// only when that will return a successful status. It removes any
-	// allocations from in-flight which were bound successfully.
-	prebindSuccessCleanup := func() {
+		// On failure, other pods of the PodGroup may still need the pending allocation,
+		// so only Unreserve releases it.
+		if retErr != nil {
+			return
+		}
+		// The claim is stored in the API server and the assume cache now,
+		// which is what other pods check from here on.
+		// Keeping the pending allocation while waiting for binding conditions would
+		// hide that the devices become free when the claim gets deallocated or deleted,
+		// because only claim changes requeue pods waiting for those devices.
+		state.informationsForClaim[index].pendingAllocationReleased = true
 		if allocation != nil {
 			for _, claimUID := range claimUIDs {
 				if deleted := pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claimUID, true); deleted {
@@ -2018,7 +2024,7 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, ind
 				}
 			}
 		}
-	}
+	}()
 
 	// Create the special claim for extended resource backed by DRA, unless PreBind already created it
 	// before patching the pod status. Then it no longer has the special name.
@@ -2026,7 +2032,7 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, ind
 		var err error
 		claim, err = pl.createExtendedResourceClaim(ctx, pod, nodeName, state)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		resourceClaimModified = true
@@ -2111,12 +2117,12 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, ind
 	})
 
 	if retryErr != nil {
-		return nil, nil, retryErr
+		return nil, retryErr
 	}
 
 	logger.V(5).Info("reserved", "pod", klog.KObj(pod), "node", nodeName, "resourceclaim", klog.Format(claim))
 
-	return claim, prebindSuccessCleanup, nil
+	return claim, nil
 }
 
 // allocationResultRequiresDRAOptionalNodeOperations checks whether an allocation result
