@@ -2012,7 +2012,7 @@ func (pl *DynamicResources) bindClaim(ctx context.Context, state *stateData, ind
 		state.informationsForClaim[index].pendingAllocationReleased = true
 		if allocation != nil {
 			for _, claimUID := range claimUIDs {
-				if deleted := pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claimUID, true); deleted {
+				if pl.draManager.ResourceClaims().MaybeRemoveClaimPendingAllocation(claimUID, false) {
 					// Since PodGroup cycle state is not set during asynchronous
 					// binding, pendingAllocations does not need to be updated.
 					// New PodGroup scheduling cycles will start
