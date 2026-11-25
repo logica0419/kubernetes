@@ -93,8 +93,8 @@ func (m *mockDRAManager) GetPendingAllocation(uid types.UID) *resourceapi.Alloca
 	return nil
 }
 
-func (m *mockDRAManager) SignalClaimPendingAllocation(uid types.UID, claim *resourceapi.ResourceClaim) error {
-	return nil
+func (m *mockDRAManager) SignalClaimPendingAllocation(uid types.UID, claim *resourceapi.ResourceClaim) (bool, error) {
+	return false, nil
 }
 
 func (m *mockDRAManager) MaybeRemoveClaimPendingAllocation(_ types.UID, _ bool) (deleted bool) {

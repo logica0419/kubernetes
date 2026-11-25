@@ -1748,16 +1748,11 @@ func (pl *DynamicResources) Reserve(ctx context.Context, cs fwk.CycleState, pod 
 				// the node until the pod terminates.
 				pl.preemptionTracker.forgetVictimClaim(claim.UID, nil)
 			}
-			err := pl.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
+			added, err := pl.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
 			if err != nil {
 				return statusError(logger, fmt.Errorf("internal error, couldn't signal allocation for claim %s: %w", claim.Name, err))
 			}
-			// To check if a share of pending allocation was added, we check if the
-			// pending allocation exists here: it does unless the signal was skipped
-			// for a claim already allocated in the assume cache.
-			// A signal for the same claim by another pod between the two calls can
-			// still make this a false positive.
-			state.informationsForClaim[index].pendingAllocationHeld = pl.draManager.ResourceClaims().GetPendingAllocation(claim.UID) != nil
+			state.informationsForClaim[index].pendingAllocationHeld = added
 			logger.V(5).Info("Reserved resource in allocation result", "claim", klog.KObj(claim), "uid", claim.UID, "resourceVersion", claim.ResourceVersion, "allocation", klog.Format(allocation))
 			allocIndex++
 

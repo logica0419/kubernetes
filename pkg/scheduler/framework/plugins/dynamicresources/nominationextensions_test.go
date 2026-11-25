@@ -78,7 +78,8 @@ func testNominationExtensions(tCtx ktesting.TContext) {
 		tCtx.ExpectNoError(err)
 		claim = claim.DeepCopy()
 		claim.Status.Allocation = allocation
-		tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim))
+		_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
+		tCtx.ExpectNoError(err)
 	}
 
 	singleClaimCases := map[string]struct {

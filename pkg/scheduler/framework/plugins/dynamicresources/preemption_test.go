@@ -432,7 +432,8 @@ func testPreemptionSimulation(tCtx ktesting.TContext) {
 				tCtx.ExpectNoError(err, "get claim with pending allocation")
 				claim = claim.DeepCopy()
 				claim.Status.Allocation = allocation
-				tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim), "add pending allocation")
+				_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
+				tCtx.ExpectNoError(err, "add pending allocation")
 			}
 			pod := tc.preemptor
 			if pod == nil {
@@ -847,7 +848,8 @@ func testPostFilterClaimBeingAllocated(tCtx ktesting.TContext) {
 			tCtx.ExpectNoError(err)
 			claim = claim.DeepCopy()
 			claim.Status.Allocation = preemptionAllocation("gpu-0")
-			tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim))
+			_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
+			tCtx.ExpectNoError(err)
 
 			_, status := testCtx.p.PreFilter(tCtx, testCtx.state, pod, testCtx.nodeInfos)
 			require.Equal(tCtx, fwk.UnschedulableAndUnresolvable, status.Code(), "PreFilter: %v", status)

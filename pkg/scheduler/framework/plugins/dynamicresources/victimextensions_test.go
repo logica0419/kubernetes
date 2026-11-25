@@ -337,7 +337,8 @@ func testPodEligibleToPreempt(tCtx ktesting.TContext) {
 				tCtx.ExpectNoError(err)
 				pendingClaim = pendingClaim.DeepCopy()
 				pendingClaim.Status.Allocation = preemptionAllocation("instance-1")
-				tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pendingClaim.UID, pendingClaim))
+				_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pendingClaim.UID, pendingClaim)
+				tCtx.ExpectNoError(err)
 			}
 			victims := tc.victims
 			if victims == nil {
@@ -948,7 +949,8 @@ func testIsSchedulableAfterAssumedPodForgotten(tCtx ktesting.TContext) {
 	tCtx.ExpectNoError(err)
 	pending = pending.DeepCopy()
 	pending.Status.Allocation = poolAllocation(node2Name, "gpu-1")
-	tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pending.UID, pending))
+	_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pending.UID, pending)
+	tCtx.ExpectNoError(err)
 
 	for name, tc := range map[string]struct {
 		oldObj   any

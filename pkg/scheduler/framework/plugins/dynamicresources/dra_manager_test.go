@@ -72,6 +72,7 @@ func testSignalClaimPendingAllocation(tCtx ktesting.TContext) {
 		cachedClaims                []*resourceapi.ResourceClaim
 		claimUID                    types.UID
 		allocatedClaim              *resourceapi.ResourceClaim
+		expectedAdded               bool
 		expectedInFlightAllocations map[types.UID]inFlightAllocation
 	}{
 		"empty": {
@@ -80,6 +81,7 @@ func testSignalClaimPendingAllocation(tCtx ktesting.TContext) {
 			},
 			claimUID:       claimUID,
 			allocatedClaim: allocatedClaim,
+			expectedAdded:  true,
 			expectedInFlightAllocations: map[types.UID]inFlightAllocation{
 				claimUID: {claim: allocatedClaim, sharers: 1},
 			},
@@ -95,6 +97,7 @@ func testSignalClaimPendingAllocation(tCtx ktesting.TContext) {
 		"extended-resource-claim-not-in-cache": {
 			claimUID:       claimUID,
 			allocatedClaim: specialAllocatedClaim,
+			expectedAdded:  true,
 			expectedInFlightAllocations: map[types.UID]inFlightAllocation{
 				claimUID: {claim: specialAllocatedClaim, sharers: 1},
 			},
@@ -106,6 +109,7 @@ func testSignalClaimPendingAllocation(tCtx ktesting.TContext) {
 			},
 			claimUID:       claimUID,
 			allocatedClaim: allocatedClaim,
+			expectedAdded:  true,
 			expectedInFlightAllocations: map[types.UID]inFlightAllocation{
 				claimUID:      {claim: allocatedClaim, sharers: 2},
 				otherClaimUID: {claim: allocatedClaim2, sharers: 10},
@@ -117,6 +121,7 @@ func testSignalClaimPendingAllocation(tCtx ktesting.TContext) {
 			},
 			claimUID:       claimUID,
 			allocatedClaim: allocatedClaim2,
+			expectedAdded:  true,
 			expectedInFlightAllocations: map[types.UID]inFlightAllocation{
 				claimUID: {claim: allocatedClaim, sharers: 2},
 			},
@@ -137,8 +142,9 @@ func testSignalClaimPendingAllocation(tCtx ktesting.TContext) {
 				informer.add(cached)
 			}
 
-			err := c.SignalClaimPendingAllocation(test.claimUID, test.allocatedClaim)
+			added, err := c.SignalClaimPendingAllocation(test.claimUID, test.allocatedClaim)
 			tCtx.ExpectNoError(err)
+			tCtx.Expect(added).To(gomega.Equal(test.expectedAdded))
 			tCtx.Expect(c.inFlightAllocations).To(gomega.Equal(test.expectedInFlightAllocations))
 		})
 	}

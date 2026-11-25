@@ -216,7 +216,7 @@ func (c *claimTracker) GetPendingAllocation(claimUID types.UID) *resourceapi.All
 	return inFlight.claim.Status.Allocation
 }
 
-func (c *claimTracker) SignalClaimPendingAllocation(claimUID types.UID, allocatedClaim *resourceapi.ResourceClaim) error {
+func (c *claimTracker) SignalClaimPendingAllocation(claimUID types.UID, allocatedClaim *resourceapi.ResourceClaim) (bool, error) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 
@@ -227,7 +227,7 @@ func (c *claimTracker) SignalClaimPendingAllocation(claimUID types.UID, allocate
 
 		claim := inFlight.claim
 		c.logger.V(5).Info("Added share for in-flight claim", "claim", klog.KObj(claim), "uid", claimUID, "version", claim.ResourceVersion, "sharers", inFlight.sharers)
-		return nil
+		return true, nil
 	}
 
 	// Check that the claim really is unallocated. The Pod's CycleState may be
@@ -238,11 +238,11 @@ func (c *claimTracker) SignalClaimPendingAllocation(claimUID types.UID, allocate
 	if !isSpecialClaimName(allocatedClaim.Name) {
 		assumedClaim, err := c.Get(allocatedClaim.Namespace, allocatedClaim.Name)
 		if err != nil {
-			return fmt.Errorf("look up assumed claim %s/%s, UID=%s: %w", allocatedClaim.Namespace, allocatedClaim.Name, claimUID, err)
+			return false, fmt.Errorf("look up assumed claim %s/%s, UID=%s: %w", allocatedClaim.Namespace, allocatedClaim.Name, claimUID, err)
 		}
 		if assumedClaim.UID == claimUID && assumedClaim.Status.Allocation != nil {
 			c.logger.V(6).Info("Claim is already allocated, not creating in-flight", "claim", klog.KObj(assumedClaim), "uid", claimUID, "version", assumedClaim.ResourceVersion)
-			return nil
+			return false, nil
 		}
 	}
 
@@ -255,7 +255,7 @@ func (c *claimTracker) SignalClaimPendingAllocation(claimUID types.UID, allocate
 	// There's no reason to return an error in this implementation, but the error is helpful for other implementations.
 	// For example, implementations that have to deal with fake claims might want to return an error if the allocation
 	// is for an invalid claim.
-	return nil
+	return true, nil
 }
 
 func (c *claimTracker) MaybeRemoveClaimPendingAllocation(claimUID types.UID, forceRemove bool) (deleted bool) {

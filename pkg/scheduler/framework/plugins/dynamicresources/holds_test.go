@@ -258,7 +258,8 @@ func testHolds(tCtx ktesting.TContext) {
 				tCtx.ExpectNoError(err)
 				pending = pending.DeepCopy()
 				pending.Status.Allocation = preemptionAllocation("gpu-1")
-				tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pending.UID, pending))
+				_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pending.UID, pending)
+				tCtx.ExpectNoError(err)
 			},
 			pod:        low,
 			wantDevice: "gpu-0",

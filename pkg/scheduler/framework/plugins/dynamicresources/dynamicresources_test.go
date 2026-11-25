@@ -1612,7 +1612,8 @@ func TestPreFilterReusesPendingAllocationWithNilNodeSelector(t *testing.T) {
 	allocatedClaim := pendingClaim.DeepCopy()
 	allocatedClaim.Status.Allocation = allocationResult.DeepCopy()
 	allocatedClaim.Status.Allocation.NodeSelector = nil
-	tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(allocatedClaim.UID, allocatedClaim))
+	_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(allocatedClaim.UID, allocatedClaim)
+	tCtx.ExpectNoError(err)
 
 	podGroupCycleState := framework.NewCycleState()
 	podGroupCycleState.Write(stateKey, &podGroupStateData{
@@ -1671,7 +1672,8 @@ func TestFilterReusesPendingAllocationRequiresDRAOptionalNodeOperations(t *testi
 	allocatedClaim := pendingClaim.DeepCopy()
 	allocatedClaim.Status.Allocation = allocationResultWithSkipNodeOperations.DeepCopy()
 	allocatedClaim.Status.Allocation.NodeSelector = nil
-	tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(allocatedClaim.UID, allocatedClaim))
+	_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(allocatedClaim.UID, allocatedClaim)
+	tCtx.ExpectNoError(err)
 
 	podGroupCycleState := framework.NewCycleState()
 	podGroupCycleState.Write(stateKey, &podGroupStateData{
@@ -1741,7 +1743,8 @@ func TestReserveMixedPendingAndFreshClaims(t *testing.T) {
 	pendingClaimAllocated := pendingClaim.DeepCopy()
 	// "instance-1" is the device the other Pod reserved for the shared claim.
 	pendingClaimAllocated.Status.Allocation = allocationResult.DeepCopy()
-	tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pendingClaimAllocated.UID, pendingClaimAllocated))
+	_, err = testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(pendingClaimAllocated.UID, pendingClaimAllocated)
+	tCtx.ExpectNoError(err)
 
 	podGroupCycleState := framework.NewCycleState()
 	podGroupCycleState.Write(stateKey, &podGroupStateData{
@@ -5349,7 +5352,8 @@ func testPlugin(tCtx ktesting.TContext, preemption bool) {
 				}
 			}
 			for _, claim := range tc.inFlightClaims {
-				tCtx.ExpectNoError(testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim))
+				_, err := testCtx.draManager.ResourceClaims().SignalClaimPendingAllocation(claim.UID, claim)
+				tCtx.ExpectNoError(err)
 			}
 
 			initialObjects := testCtx.listAll(tCtx)
@@ -7252,7 +7256,7 @@ func testGatherAllocatedState(tCtx ktesting.TContext) {
 			if tc.inflightResourceClaims != nil {
 				for claimUID, obj := range tc.inflightResourceClaims {
 					assumeCacheInformer.add(obj)
-					err := draManager.resourceClaimTracker.SignalClaimPendingAllocation(claimUID, obj)
+					_, err := draManager.resourceClaimTracker.SignalClaimPendingAllocation(claimUID, obj)
 					if err != nil {
 						if !tc.expectErr {
 							tCtx.Fatalf("unexpected error: %v", err)

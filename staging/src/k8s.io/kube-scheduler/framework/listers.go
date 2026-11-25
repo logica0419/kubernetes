@@ -159,10 +159,12 @@ type ResourceClaimTracker interface {
 
 	// SignalClaimPendingAllocation signals to the tracker that the given ResourceClaim will be allocated via an API call in the
 	// binding phase, therefore the given ResourceClaim must be non-nil and have a non-nil Status.Allocation.
-	// If the claim already has a pending allocation, then the allocation becomes shared. The same number of SignalClaimPendingAllocation() callers
-	// for a given claimUID is expected to eventually call MaybeRemoveClaimPendingAllocation() for that claimUID.
+	// If the claim already has a pending allocation, then the allocation becomes shared.
+	// Returns whether the caller got a share of the pending allocation. It does not when the claim is already allocated.
+	// Each caller which got a share is expected to eventually call MaybeRemoveClaimPendingAllocation() once for that claimUID,
+	// and the others must not, because the pending allocation does not record which callers hold its shares.
 	// This change is immediately reflected in the result of List() and the other accessors.
-	SignalClaimPendingAllocation(claimUID types.UID, allocatedClaim *resourceapi.ResourceClaim) error
+	SignalClaimPendingAllocation(claimUID types.UID, allocatedClaim *resourceapi.ResourceClaim) (added bool, err error)
 	// ClaimHasPendingAllocation answers whether a given claim has a pending allocation during the binding phase. It can be used to avoid
 	// race conditions in subsequent scheduling phases.
 	GetPendingAllocation(claimUID types.UID) *resourceapi.AllocationResult
